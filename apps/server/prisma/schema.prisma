@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  LECTURER
+  ADMIN
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String   @db.VarChar(100)
+  lastName     String   @db.VarChar(100)
+  role         Role
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  studentProfile  StudentProfile?
+  lecturerProfile LecturerProfile?
+  sessions        Session[]
+  refreshTokens   RefreshToken[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Faculty {
+  id        String   @id @default(cuid())
+  name      String   @unique @db.VarChar(200)
+  code      String   @unique @db.VarChar(10)
+  createdAt DateTime @default(now())
+
+  departments Department[]
+  @@map("faculties")
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique @db.VarChar(200)
+  code      String   @unique @db.VarChar(10)
+  facultyId String
+  faculty   Faculty  @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  programs Program[]
+  @@index([facultyId])
+  @@map("departments")
+}
+
+model Program {
+  id           String     @id @default(cuid())
+  name         String     @db.VarChar(200)
+  code         String     @unique @db.VarChar(20)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  level        String     @db.VarChar(50)
+  createdAt    DateTime   @default(now())
+
+  courses     Course[]
+  students    StudentProfile[]
+  @@index([departmentId])
+  @@map("programs")
+}
+
+model Semester {
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(100)
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  courses    Course[]
+  qrSessions QRSession[]
+  @@map("semesters")
+}
+
+model Course {
+  id         String   @id @default(cuid())
+  name       String   @db.VarChar(200)
+  code       String   @db.VarChar(20)
+  semesterId String
+  semester   Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  programId  String
+  program    Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  lecturerId String?
+  lecturer   LecturerProfile? @relation(fields: [lecturerId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  enrollments       Enrollment[]
+  qrSessions        QRSession[]
+  attendanceRecords AttendanceRecord[]
+
+  @@unique([code, semesterId])
+  @@index([semesterId])
+  @@index([programId])
+  @@index([lecturerId])
+  @@map("courses")
+}
+
+model StudentProfile {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studentNumber String @unique @db.VarChar(20)
+  programId    String
+  program      Program @relation(fields: [programId], references: [id])
+  yearOfStudy  Int
+
+  enrollments       Enrollment[]
+  attendanceRecords AttendanceRecord[]
+
+  @@index([programId])
+  @@map("student_profiles")
+}
+
+model LecturerProfile {
+  id      String   @id @default(cuid())
+  userId  String   @unique
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  staffId String?  @unique @db.VarChar(20)
+  courses Course[]
+
+  @@map("lecturer_profiles")
+}
+
+model Enrollment {
+  id         String   @id @default(cuid())
+  studentId  String
+  student    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrolledAt DateTime @default(now())
+
+  @@unique([studentId, courseId])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+model QRSession {
+  id        String   @id @default(cuid())
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  semesterId String
+  semester  Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  qrCode    String   @unique
+  expiresAt DateTime
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  attendanceRecords AttendanceRecord[]
+
+  @@index([courseId])
+  @@index([qrCode])
+  @@map("qr_sessions")
+}
+
+model AttendanceRecord {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  qrSessionId String
+  qrSession   QRSession @relation(fields: [qrSessionId], references: [id], onDelete: Cascade)
+  status      AttendanceStatus @default(PRESENT)
+  checkedInAt DateTime @default(now())
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@unique([studentId, qrSessionId])
+  @@index([courseId])
+  @@index([checkedInAt])
+  @@map("attendance_records")
+}
