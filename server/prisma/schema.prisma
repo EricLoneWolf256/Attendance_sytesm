@@ -1,0 +1,308 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  LECTURER
+  STUDENT
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+enum ProgrammeLevel {
+  undergraduate
+  postgraduate
+  diploma
+}
+
+enum SessionMode {
+  online
+  physical
+}
+
+enum SessionStatus {
+  open
+  closed
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  late
+  excused
+}
+
+enum SignInMethod {
+  self
+  admin_override
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model Campus {
+  id         String     @id @default(cuid())
+  name       String     @unique
+  createdAt  DateTime   @default(now()) @map("created_at")
+  users      User[]
+  faculties  Faculty[]
+
+  @@map("campuses")
+}
+
+model Faculty {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  campusId  String       @map("campus_id")
+  createdAt DateTime     @default(now()) @map("created_at")
+  campus    Campus       @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  departments Department[]
+  users     User[]
+
+  @@index([campusId])
+  @@map("faculties")
+}
+
+model Department {
+  id         String     @id @default(cuid())
+  name       String
+  facultyId  String     @map("faculty_id")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  faculty    Faculty    @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  programmes Programme[]
+  courses    Course[]
+
+  @@unique([name, facultyId])
+  @@index([facultyId])
+  @@map("departments")
+}
+
+model Programme {
+  id           String          @id @default(cuid())
+  name         String
+  departmentId String          @map("department_id")
+  level        ProgrammeLevel  @default(undergraduate)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  department   Department      @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  courseOfferings CourseOffering[]
+  users        User[]
+  classReps    ClassRep[]
+  attendancePolicies AttendancePolicy[]
+
+  @@unique([name, departmentId])
+  @@index([departmentId])
+  @@map("programmes")
+}
+
+model AcademicYear {
+  id        String     @id @default(cuid())
+  label     String     @unique
+  isCurrent Boolean    @default(false) @map("is_current")
+  createdAt DateTime   @default(now()) @map("created_at")
+  semesters Semester[]
+
+  @@map("academic_years")
+}
+
+model Semester {
+  id             String       @id @default(cuid())
+  academicYearId String       @map("academic_year_id")
+  name           String
+  intakeMonth    String?      @map("intake_month")
+  isActive       Boolean      @default(false) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  courseOfferings CourseOffering[]
+  classReps      ClassRep[]
+
+  @@unique([academicYearId, name])
+  @@index([academicYearId])
+  @@map("semesters")
+}
+
+model Course {
+  id           String     @id @default(cuid())
+  code         String     @unique
+  title        String
+  creditUnits  Int        @default(3) @map("credit_units")
+  departmentId String     @map("department_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  courseOfferings CourseOffering[]
+
+  @@index([departmentId])
+  @@map("courses")
+}
+
+model CourseOffering {
+  id           String     @id @default(cuid())
+  courseId      String     @map("course_id")
+  programmeId  String     @map("programme_id")
+  yearOfStudy  Int        @map("year_of_study")
+  semesterId   String     @map("semester_id")
+  lecturerId   String     @map("lecturer_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  programme    Programme  @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  semester     Semester   @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  lecturer     User       @relation("LecturerCourses", fields: [lecturerId], references: [id], onDelete: Cascade)
+  enrollments  Enrollment[]
+  sessions     ClassSession[]
+
+  @@unique([courseId, programmeId, yearOfStudy, semesterId])
+  @@index([programmeId, yearOfStudy, semesterId])
+  @@index([lecturerId])
+  @@map("course_offerings")
+}
+
+model User {
+  id            String     @id @default(cuid())
+  name          String
+  email         String     @unique
+  passwordHash  String     @map("password_hash")
+  role          UserRole   @default(STUDENT)
+  regNumber     String?    @map("reg_number")
+  staffNumber   String?    @map("staff_number")
+  gender        String?
+  campusId      String     @map("campus_id")
+  facultyId     String?    @map("faculty_id")
+  programmeId   String?    @map("programme_id")
+  yearOfStudy   Int?       @map("year_of_study")
+  status        UserStatus @default(active)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  campus        Campus     @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  faculty       Faculty?   @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  programme     Programme? @relation(fields: [programmeId], references: [id], onDelete: SetNull)
+  offeredCourses CourseOffering[] @relation("LecturerCourses")
+  enrollments   Enrollment[]
+  classRepOf    ClassRep[] @relation("ClassRepStudent")
+  sessionsStarted ClassSession[] @relation("SessionStarter")
+  attendanceRecords AttendanceRecord[]
+  assignedReps ClassRep[] @relation("ClassRepAssigner")
+  auditLogs     AuditLog[]
+
+  @@index([email])
+  @@index([regNumber])
+  @@index([facultyId])
+  @@index([programmeId])
+  @@index([role])
+  @@map("users")
+}
+
+model Enrollment {
+  id              String         @id @default(cuid())
+  studentId       String         @map("student_id")
+  courseOfferingId String       @map("course_offering_id")
+  enrolledAt      DateTime       @default(now()) @map("enrolled_at")
+  student         User           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseOffering  CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseOfferingId])
+  @@index([studentId])
+  @@index([courseOfferingId])
+  @@map("enrollments")
+}
+
+model ClassRep {
+  id            String   @id @default(cuid())
+  studentId     String   @map("student_id")
+  programmeId   String   @map("programme_id")
+  yearOfStudy   Int      @map("year_of_study")
+  semesterId    String   @map("semester_id")
+  assignedBy    String   @map("assigned_by")
+  assignedAt    DateTime @default(now()) @map("assigned_at")
+  student       User     @relation("ClassRepStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  programme     Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  semester      Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  assigner      User     @relation("ClassRepAssigner", fields: [assignedBy], references: [id], onDelete: Cascade)
+
+  @@unique([programmeId, yearOfStudy, semesterId])
+  @@index([studentId])
+  @@index([semesterId])
+  @@map("class_reps")
+}
+
+model ClassSession {
+  id                   String        @id @default(cuid())
+  courseOfferingId     String        @map("course_offering_id")
+  startedBy            String        @map("started_by")
+  date                 DateTime      @db.Date
+  modeOfTeaching       SessionMode   @default(physical) @map("mode_of_teaching")
+  startTime            DateTime
+  endTime              DateTime?     @map("end_time")
+  duration             Int?          // minutes
+  venue                String?
+  topic                String?
+  status               SessionStatus @default(open)
+  lecturerConfirmedAt  DateTime?     @map("lecturer_confirmed_at")
+  closedAt             DateTime?     @map("closed_at")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  courseOffering       CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+  starter              User          @relation("SessionStarter", fields: [startedBy], references: [id], onDelete: Cascade)
+  attendanceRecords    AttendanceRecord[]
+
+  @@index([courseOfferingId])
+  @@index([date])
+  @@index([status])
+  @@index([startedBy])
+  @@map("class_sessions")
+}
+
+model AttendanceRecord {
+  id             String         @id @default(cuid())
+  sessionId      String         @map("session_id")
+  studentId      String         @map("student_id")
+  status         AttendanceStatus @default(present)
+  signedInAt     DateTime?      @map("signed_in_at")
+  signInMethod   SignInMethod    @default(self) @map("sign_in_method")
+  markedBy       String?        @map("marked_by")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  session        ClassSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student        User           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@index([sessionId])
+  @@index([studentId])
+  @@map("attendance_records")
+}
+
+model AttendancePolicy {
+  id            String     @id @default(cuid())
+  programmeId   String?    @map("programme_id")
+  minPercentage Decimal    @default(75) @map("min_percentage") @db.Decimal(5, 2)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  programme     Programme? @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+
+  @@unique([programmeId])
+  @@map("attendance_policies")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String   @map("actor_id")
+  action     String
+  targetTable String  @map("target_table")
+  targetId   String   @map("target_id")
+  beforeJson Json?    @map("before_json")
+  afterJson  Json?    @map("after_json")
+  createdAt  DateTime @default(now()) @map("created_at")
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([actorId])
+  @@index([targetTable, targetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
