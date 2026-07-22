@@ -1,30 +1,34 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
+import { ApiError } from "../utils/ApiError";
 
-export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction) {
-  console.error("Error:", err);
+export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
+  console.error(`[Error] ${err.message}`, err.stack);
 
   if (err instanceof ZodError) {
-    return res.status(400).json({
+    res.status(400).json({
+      success: false,
       error: "Validation error",
       details: err.errors.map((e) => ({
         field: e.path.join("."),
         message: e.message,
       })),
     });
+    return;
   }
 
-  if (err.message === "UNAUTHORIZED") {
-    return res.status(401).json({ error: "Unauthorized" });
+  if (err instanceof ApiError) {
+    res.status(err.statusCode).json({
+      success: false,
+      error: err.message,
+    });
+    return;
   }
 
-  if (err.message === "FORBIDDEN") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  if (err.message === "NOT_FOUND") {
-    return res.status(404).json({ error: "Not found" });
-  }
-
-  return res.status(500).json({ error: "Internal server error" });
+  res.status(500).json({
+    success: false,
+    error: process.env.NODE_ENV === "production"
+      ? "Internal server error"
+      : err.message,
+  });
 }

@@ -1,0 +1,9 @@
+export { authService } from "./auth.service";
+export { userService } from "./user.service";
+export { facultyService } from "./faculty.service";
+export { departmentService } from "./department.service";
+export { programmeService } from "./programme.service";
+export { courseService } from "./course.service";
+export { sessionService } from "./session.service";
+export { attendanceService } from "./attendance.service";
+export { statsService } from "./stats.service";

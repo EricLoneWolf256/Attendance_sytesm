@@ -1,9 +1,11 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import type { UserRole } from "@/types";
+import { ROLE_HOME } from "@/lib/routes";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  allowedRoles?: string[];
+  allowedRoles?: UserRole[];
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
@@ -22,8 +24,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    const fallback = user.role === "LECTURER" ? "/lecturer" : user.role === "STUDENT" ? "/student/dashboard" : "/admin";
-    return <Navigate to={fallback} replace />;
+    return <Navigate to={ROLE_HOME[user.role]} replace />;
   }
 
   return <>{children}</>;

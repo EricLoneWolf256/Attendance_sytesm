@@ -1,120 +1,131 @@
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import type { User, ClassSession } from "@/types";
+import { sessionService } from "@/lib/services/session.service";
+import { queryKeys } from "@/lib/queryKeys";
+import { toast } from "sonner";
 
-export interface ClassSession {
-  id: string;
+export interface SessionFormData {
   courseOfferingId: string;
-  startedBy: string;
   date: string;
-  modeOfTeaching: "online" | "physical";
   startTime: string;
-  endTime: string | null;
-  duration: number | null;
-  venue: string | null;
-  topic: string | null;
-  status: "open" | "closed";
-  createdAt: string;
-  courseOffering?: {
-    id: string;
-    course: { id: string; code: string; title: string };
-    programme: { id: string; name: string };
-    semester: { id: string; name: string };
-  };
-  starter?: { id: string; name: string };
-  _count?: { attendanceRecords: number };
+  modeOfTeaching: string;
+  venueId?: string;
+  topic?: string;
 }
 
-export interface ClassRepStatus {
-  id: string;
-  studentId: string;
-  programmeId: string;
-  yearOfStudy: number;
-  semesterId: string;
-  programme: { id: string; name: string };
-  semester: { id: string; name: string };
-}
+export function useSessions(userId?: string) {
+  const queryClient = useQueryClient();
+  const queryKey = userId
+    ? queryKeys.sessions.lecturer(userId)
+    : queryKeys.sessions.all;
 
-export function useClassRepStatus() {
-  return useQuery({
-    queryKey: ["classRepStatus"],
-    queryFn: async () => {
-      const { data } = await api.get<{ classRep: ClassRepStatus | null }>("/classrep/status");
-      return data.classRep;
+  const { data: sessions = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: () =>
+      userId
+        ? sessionService.getAll({ lecturerId: userId }) as any
+        : sessionService.getAll() as any,
+  });
+
+  const openSessions = useMemo(
+    () => sessions.filter((s: any) => s.status === "OPEN"),
+    [sessions]
+  );
+
+  const startSession = useMutation({
+    mutationFn: ({
+      formData,
+      user,
+    }: {
+      formData: SessionFormData;
+      user: User | null;
+    }) =>
+      sessionService.create({
+        ...formData,
+        lecturerId: user?.id,
+      }) as any,
+    onSuccess: (newSession: ClassSession) => {
+      queryClient.setQueryData<ClassSession[]>(queryKey, (old = []) => [
+        newSession,
+        ...old,
+      ]);
+      toast.success("Session started!");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
     },
   });
-}
 
-export function useSessions(filters?: { courseOfferingId?: string; status?: string }) {
-  return useQuery({
-    queryKey: ["sessions", filters],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (filters?.courseOfferingId) params.set("courseOfferingId", filters.courseOfferingId);
-      if (filters?.status) params.set("status", filters.status);
-      const qs = params.toString();
-      const { data } = await api.get<{ sessions: ClassSession[] }>(
-        `/classrep/sessions${qs ? `?${qs}` : ""}`
+  const stopSession = useMutation({
+    mutationFn: (sessionId: string) => sessionService.closeSession(sessionId) as any,
+    onSuccess: (_data: any, sessionId: string) => {
+      queryClient.setQueryData<ClassSession[]>(queryKey, (old = []) =>
+        old.map((s) =>
+          s.id === sessionId
+            ? { ...s, status: "CLOSED" as const, endTime: new Date() }
+            : s
+        )
       );
-      return data.sessions;
+      toast.success("Session stopped");
     },
   });
+
+  return {
+    sessions,
+    isLoading,
+    openSessions,
+    startSession,
+    stopSession,
+  };
 }
 
-export function useSession(id: string) {
-  return useQuery({
-    queryKey: ["session", id],
-    queryFn: async () => {
-      const { data } = await api.get<{ session: ClassSession }>(`/classrep/sessions/${id}`);
-      return data.session;
-    },
-    enabled: !!id,
+export function useSessionForm() {
+  const [formData, setFormData] = useState<SessionFormData>({
+    courseOfferingId: "",
+    date: new Date().toISOString().split("T")[0],
+    startTime: "09:00",
+    modeOfTeaching: "PHYSICAL",
+    venueId: "",
+    topic: "",
   });
-}
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-export function useStartSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: {
-      courseOfferingId: string;
-      date: string;
-      modeOfTeaching: "online" | "physical";
-      startTime: string;
-      venue?: string;
-      topic?: string;
-    }) => {
-      const { data } = await api.post<{ session: ClassSession }>("/classrep/sessions", payload);
-      return data.session;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-    },
-  });
-}
+  const updateField = <K extends keyof SessionFormData>(
+    field: K,
+    value: SessionFormData[K]
+  ) => {
+    setFormData((prev: SessionFormData) => ({ ...prev, [field]: value }));
+  };
 
-export function useCloseSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (sessionId: string) => {
-      const { data } = await api.put<{ session: ClassSession }>(`/classrep/sessions/${sessionId}/close`);
-      return data.session;
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["session", variables] });
-    },
-  });
-}
+  const resetForm = () => {
+    setFormData({
+      courseOfferingId: "",
+      date: new Date().toISOString().split("T")[0],
+      startTime: "09:00",
+      modeOfTeaching: "PHYSICAL",
+      venueId: "",
+      topic: "",
+    });
+  };
 
-export function useConfirmSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (sessionId: string) => {
-      const { data } = await api.put<{ session: ClassSession }>(`/classrep/sessions/${sessionId}/confirm`);
-      return data.session;
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["session", variables] });
-    },
-  });
+  const openDialog = () => {
+    resetForm();
+    setDialogOpen(true);
+  };
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+  };
+
+  return {
+    formData,
+    setFormData,
+    dialogOpen,
+    setDialogOpen,
+    updateField,
+    resetForm,
+    openDialog,
+    closeDialog,
+  };
 }

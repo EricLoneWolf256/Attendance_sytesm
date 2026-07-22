@@ -1,101 +1,124 @@
+import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import type { User, UserRole } from "@/types";
+import { userService } from "@/lib/services/user.service";
+import { queryKeys } from "@/lib/queryKeys";
+import { toast } from "sonner";
 
-export interface UserRecord {
-  id: string;
-  name: string;
-  email: string;
-  role: "SUPER_ADMIN" | "ADMIN" | "LECTURER" | "STUDENT";
-  regNumber: string | null;
-  staffNumber: string | null;
-  gender: string | null;
-  status: string;
-  campusId: string;
-  facultyId: string | null;
-  programmeId: string | null;
-  yearOfStudy: number | null;
-  createdAt: string;
-  campus?: { id: string; name: string };
-  faculty?: { id: string; name: string };
-  programme?: { id: string; name: string };
-}
-
-export function useUsers(filters?: { role?: string }) {
-  return useQuery({
-    queryKey: ["users", filters],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (filters?.role) params.set("role", filters.role);
-      const qs = params.toString();
-      const { data } = await api.get<{ users: UserRecord[] }>(`/users${qs ? `?${qs}` : ""}`);
-      return data.users;
-    },
-  });
-}
-
-export function useCreateUser() {
+export function useUsers() {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: {
-      name: string;
+
+  const {
+    data: users = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: queryKeys.users.all,
+    queryFn: () => userService.getAll() as any,
+  });
+
+  const createUser = useMutation({
+    mutationFn: (data: {
+      firstName: string;
+      lastName: string;
       email: string;
-      password: string;
-      role: string;
-      regNumber?: string;
+      role: UserRole;
+      studentNumber?: string;
       staffNumber?: string;
-      gender?: string;
-      campusId: string;
-      facultyId?: string;
-      programmeId?: string;
-      yearOfStudy?: number;
+      facultyId?: string | null;
     }) => {
-      const { data } = await api.post<{ user: UserRecord }>("/users", payload);
-      return data.user;
+      if (!data.firstName.trim() || !data.email.trim()) {
+        throw new Error("First name and email are required");
+      }
+      return userService.create({
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        role: data.role,
+        studentNumber: data.role === "STUDENT" ? data.studentNumber : undefined,
+        staffNumber: data.role !== "STUDENT" ? data.staffNumber : undefined,
+        gender: "Other",
+        campusId: "c1",
+        facultyId: data.facultyId ?? null,
+        programmeId: null,
+        yearOfStudy: data.role === "STUDENT" ? 1 : null,
+        status: "ACTIVE",
+      }) as any;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+    onSuccess: (newUser: User) => {
+      queryClient.setQueryData<User[]>(queryKeys.users.all, (old = []) => [
+        ...old,
+        newUser,
+      ]);
+      toast.success(`User "${newUser.firstName} ${newUser.lastName}" created successfully`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
     },
   });
-}
 
-export function useUpdateUser() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
+  const updateUser = useMutation({
+    mutationFn: ({
       id,
-      ...payload
+      data,
     }: {
       id: string;
-      name?: string;
-      email?: string;
-      role?: string;
-      regNumber?: string;
-      staffNumber?: string;
-      gender?: string;
-      status?: string;
-      campusId?: string;
-      facultyId?: string;
-      programmeId?: string;
-      yearOfStudy?: number;
-    }) => {
-      const { data } = await api.put<{ user: UserRecord }>(`/users/${id}`, payload);
-      return data.user;
+      data: Partial<User>;
+    }) => userService.update(id, data as Record<string, unknown>) as any,
+    onSuccess: (updated: User) => {
+      queryClient.setQueryData<User[]>(queryKeys.users.all, (old = []) =>
+        old.map((u: User) => (u.id === updated.id ? updated : u))
+      );
+      toast.success(`${updated.firstName} ${updated.lastName} updated successfully`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+    onError: (err: Error) => {
+      toast.error(err.message);
     },
   });
+
+  const toggleStatus = useMutation({
+    mutationFn: ({
+      id,
+      currentStatus,
+    }: {
+      id: string;
+      currentStatus: string;
+    }) => {
+      const newStatus = currentStatus === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+      return userService.updateStatus(id, newStatus) as any;
+    },
+    onSuccess: (updated: User) => {
+      queryClient.setQueryData<User[]>(queryKeys.users.all, (old = []) =>
+        old.map((u: User) => (u.id === updated.id ? updated : u))
+      );
+      toast.success(
+        `${updated.firstName} ${updated.lastName} ${updated.status === "ACTIVE" ? "activated" : "suspended"}`
+      );
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const filteredUsers = useMemo(() => users, [users]);
+
+  return {
+    users: filteredUsers,
+    isLoading,
+    isError,
+    createUser,
+    updateUser,
+    toggleStatus,
+  };
 }
 
-export function useToggleUserStatus() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { data } = await api.put<{ user: UserRecord }>(`/users/${id}/deactivate`);
-      return data.user;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-    },
+export function useUserFaculties() {
+  const { data: faculties = [] } = useQuery({
+    queryKey: queryKeys.faculties.all,
+    queryFn: () =>
+      import("@/lib/services/faculty.service").then(
+        (m) => m.facultyService.getAll() as any
+      ),
   });
+  return { faculties };
 }

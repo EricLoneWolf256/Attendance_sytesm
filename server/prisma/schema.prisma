@@ -12,206 +12,425 @@ datasource db {
 enum UserRole {
   SUPER_ADMIN
   ADMIN
+  FACULTY_ADMIN
+  DEPARTMENT_ADMIN
   LECTURER
   STUDENT
 }
 
 enum UserStatus {
-  active
-  suspended
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
 }
 
 enum ProgrammeLevel {
-  undergraduate
-  postgraduate
-  diploma
+  UNDERGRADUATE
+  POSTGRADUATE
+  DIPLOMA
+  CERTIFICATE
+}
+
+enum CourseOfferingStatus {
+  DRAFT
+  PUBLISHED
+  ACTIVE
+  COMPLETED
+  ARCHIVED
 }
 
 enum SessionMode {
-  online
-  physical
+  ONLINE
+  PHYSICAL
+  HYBRID
 }
 
 enum SessionStatus {
-  open
-  closed
+  SCHEDULED
+  OPEN
+  CLOSED
+  CANCELLED
 }
 
 enum AttendanceStatus {
-  present
-  absent
-  late
-  excused
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
 }
 
 enum SignInMethod {
-  self
-  admin_override
+  QR
+  PIN
+  SELF
+  ADMIN_OVERRIDE
 }
 
-// ─── Models ──────────────────────────────────────────────────────────────────
+enum VenueType {
+  LECTURE_HALL
+  LABORATORY
+  SEMINAR_ROOM
+  AUDITORIUM
+  TUTORIAL_ROOM
+  OTHER
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+  DESKTOP
+}
+
+enum NotificationType {
+  SESSION_STARTED
+  ATTENDANCE_MARKED
+  ATTENDANCE_ABSENT
+  ENROLLMENT_CONFIRMED
+  GRADE_POSTED
+  GENERAL
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  CHECK_IN
+}
+
+// ─── Core Academic Entities ──────────────────────────────────────────────────
 
 model Campus {
-  id         String     @id @default(cuid())
-  name       String     @unique
-  createdAt  DateTime   @default(now()) @map("created_at")
-  users      User[]
+  id        String     @id @default(cuid())
+  name      String     @unique
+  code      String     @unique
+  address   String?
+  latitude  Float?
+  longitude Float?
+  timezone  String     @default("Africa/Kampala")
+  isActive  Boolean    @default(true) @map("is_active")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  buildings  Building[]
   faculties  Faculty[]
+  users      User[]
 
   @@map("campuses")
 }
 
-model Faculty {
-  id        String       @id @default(cuid())
-  name      String       @unique
-  campusId  String       @map("campus_id")
-  createdAt DateTime     @default(now()) @map("created_at")
-  campus    Campus       @relation(fields: [campusId], references: [id], onDelete: Cascade)
-  departments Department[]
-  users     User[]
+model Building {
+  id        String   @id @default(cuid())
+  name      String
+  code      String
+  campusId  String   @map("campus_id")
+  floors    Int      @default(1)
+  latitude  Float?
+  longitude Float?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
+  campus   Campus  @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  venues   Venue[]
+
+  @@unique([code, campusId])
   @@index([campusId])
+  @@map("buildings")
+}
+
+model Venue {
+  id          String    @id @default(cuid())
+  name        String
+  code        String
+  buildingId  String    @map("building_id")
+  floor       Int       @default(0)
+  roomNumber  String?   @map("room_number")
+  capacity    Int
+  type        VenueType @default(LECTURE_HALL)
+  hasProjector Boolean  @default(false) @map("has_projector")
+  hasWifi     Boolean   @default(true) @map("has_wifi")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  building     Building       @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  classSessions ClassSession[]
+  timetables   Timetable[]
+
+  @@unique([code, buildingId])
+  @@index([buildingId])
+  @@index([capacity])
+  @@map("venues")
+}
+
+model Faculty {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  code      String    @unique
+  campusId  String    @map("campus_id")
+  deanId    String?   @map("dean_id")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  campus      Campus       @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  dean        User?        @relation("FacultyDean", fields: [deanId], references: [id], onDelete: SetNull)
+  departments Department[]
+  users       User[]       @relation("FacultyMember")
+
+  @@unique([deanId])
+  @@index([campusId])
+  @@index([deanId])
   @@map("faculties")
 }
 
 model Department {
-  id         String     @id @default(cuid())
+  id         String    @id @default(cuid())
   name       String
-  facultyId  String     @map("faculty_id")
-  createdAt  DateTime   @default(now()) @map("created_at")
+  code       String
+  facultyId  String    @map("faculty_id")
+  hodId      String?   @map("hod_id")
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
   faculty    Faculty    @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  hod        User?      @relation("DepartmentHOD", fields: [hodId], references: [id], onDelete: SetNull)
   programmes Programme[]
   courses    Course[]
 
+  @@unique([code, facultyId])
   @@unique([name, facultyId])
+  @@unique([hodId])
   @@index([facultyId])
+  @@index([hodId])
   @@map("departments")
 }
 
 model Programme {
-  id           String          @id @default(cuid())
-  name         String
-  departmentId String          @map("department_id")
-  level        ProgrammeLevel  @default(undergraduate)
-  createdAt    DateTime        @default(now()) @map("created_at")
-  department   Department      @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  courseOfferings CourseOffering[]
-  users        User[]
-  classReps    ClassRep[]
+  id             String          @id @default(cuid())
+  name           String
+  code           String
+  departmentId   String          @map("department_id")
+  level          ProgrammeLevel  @default(UNDERGRADUATE)
+  durationYears  Int             @default(4) @map("duration_years")
+  isActive       Boolean         @default(true) @map("is_active")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  department       Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  courseOfferings  CourseOffering[]
+  users            User[]
+  classReps        ClassRep[]
   attendancePolicies AttendancePolicy[]
 
+  @@unique([code, departmentId])
   @@unique([name, departmentId])
   @@index([departmentId])
   @@map("programmes")
 }
 
+// ─── Academic Period Entities ────────────────────────────────────────────────
+
 model AcademicYear {
   id        String     @id @default(cuid())
+  code      String     @unique
   label     String     @unique
+  startDate DateTime   @map("start_date")
+  endDate   DateTime   @map("end_date")
   isCurrent Boolean    @default(false) @map("is_current")
   createdAt DateTime   @default(now()) @map("created_at")
-  semesters Semester[]
+  updatedAt DateTime   @updatedAt @map("updated_at")
 
+  semesters        Semester[]
+  courseOfferings  CourseOffering[]
+
+  @@index([isCurrent])
+  @@index([startDate])
   @@map("academic_years")
 }
 
 model Semester {
   id             String       @id @default(cuid())
+  code           String
   academicYearId String       @map("academic_year_id")
   name           String
+  startDate      DateTime     @map("start_date")
+  endDate        DateTime     @map("end_date")
   intakeMonth    String?      @map("intake_month")
   isActive       Boolean      @default(false) @map("is_active")
   createdAt      DateTime     @default(now()) @map("created_at")
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  courseOfferings CourseOffering[]
-  classReps      ClassRep[]
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
+  academicYear    AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  courseOfferings CourseOffering[]
+  classReps       ClassRep[]
+  classSessions   ClassSession[]
+
+  @@unique([academicYearId, code])
   @@unique([academicYearId, name])
   @@index([academicYearId])
+  @@index([isActive])
   @@map("semesters")
 }
+
+// ─── Course Entities ─────────────────────────────────────────────────────────
 
 model Course {
   id           String     @id @default(cuid())
   code         String     @unique
   title        String
+  description  String?    @db.Text
   creditUnits  Int        @default(3) @map("credit_units")
   departmentId String     @map("department_id")
+  level        Int        @default(1)
+  prerequisites String?   @db.Text
+  isActive     Boolean    @default(true) @map("is_active")
   createdAt    DateTime   @default(now()) @map("created_at")
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  department     Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   courseOfferings CourseOffering[]
 
   @@index([departmentId])
+  @@index([code])
+  @@index([level])
   @@map("courses")
 }
 
 model CourseOffering {
-  id           String     @id @default(cuid())
-  courseId      String     @map("course_id")
-  programmeId  String     @map("programme_id")
-  yearOfStudy  Int        @map("year_of_study")
-  semesterId   String     @map("semester_id")
-  lecturerId   String     @map("lecturer_id")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  programme    Programme  @relation(fields: [programmeId], references: [id], onDelete: Cascade)
-  semester     Semester   @relation(fields: [semesterId], references: [id], onDelete: Cascade)
-  lecturer     User       @relation("LecturerCourses", fields: [lecturerId], references: [id], onDelete: Cascade)
-  enrollments  Enrollment[]
-  sessions     ClassSession[]
+  id                String                @id @default(cuid())
+  courseId           String                @map("course_id")
+  programmeId       String                @map("programme_id")
+  yearOfStudy       Int                   @map("year_of_study")
+  semesterId        String                @map("semester_id")
+  lecturerId        String                @map("lecturer_id")
+  classRepId        String?               @map("class_rep_id")
+  academicYearId    String                @map("academic_year_id")
+  maxEnrollment     Int?                  @map("max_enrollment")
+  currentEnrollment Int                   @default(0) @map("current_enrollment")
+  status            CourseOfferingStatus  @default(DRAFT)
+  isActive          Boolean               @default(true) @map("is_active")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  course          Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  programme       Programme       @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  semester        Semester        @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  lecturer        User            @relation("LecturerCourses", fields: [lecturerId], references: [id], onDelete: Cascade)
+  classRep        User?           @relation("CourseClassRep", fields: [classRepId], references: [id], onDelete: SetNull)
+  academicYear    AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  enrollments     Enrollment[]
+  sessions        ClassSession[]
+  timetables      Timetable[]
+  classGroups     ClassGroup[]
 
   @@unique([courseId, programmeId, yearOfStudy, semesterId])
   @@index([programmeId, yearOfStudy, semesterId])
   @@index([lecturerId])
+  @@index([classRepId])
+  @@index([academicYearId])
+  @@index([status])
+  @@index([isActive])
   @@map("course_offerings")
 }
 
-model User {
-  id            String     @id @default(cuid())
-  name          String
-  email         String     @unique
-  passwordHash  String     @map("password_hash")
-  role          UserRole   @default(STUDENT)
-  regNumber     String?    @map("reg_number")
-  staffNumber   String?    @map("staff_number")
-  gender        String?
-  campusId      String     @map("campus_id")
-  facultyId     String?    @map("faculty_id")
-  programmeId   String?    @map("programme_id")
-  yearOfStudy   Int?       @map("year_of_study")
-  status        UserStatus @default(active)
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
-  campus        Campus     @relation(fields: [campusId], references: [id], onDelete: Cascade)
-  faculty       Faculty?   @relation(fields: [facultyId], references: [id], onDelete: SetNull)
-  programme     Programme? @relation(fields: [programmeId], references: [id], onDelete: SetNull)
-  offeredCourses CourseOffering[] @relation("LecturerCourses")
-  enrollments   Enrollment[]
-  classRepOf    ClassRep[] @relation("ClassRepStudent")
-  sessionsStarted ClassSession[] @relation("SessionStarter")
-  attendanceRecords AttendanceRecord[]
-  assignedReps ClassRep[] @relation("ClassRepAssigner")
-  auditLogs     AuditLog[]
+model ClassGroup {
+  id                String   @id @default(cuid())
+  courseOfferingId  String   @map("course_offering_id")
+  name              String
+  maxCapacity       Int?     @map("max_capacity")
+  currentEnrollment Int      @default(0) @map("current_enrollment")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
+  courseOffering CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+  enrollments   Enrollment[]
+
+  @@unique([courseOfferingId, name])
+  @@index([courseOfferingId])
+  @@map("class_groups")
+}
+
+// ─── User Entity ─────────────────────────────────────────────────────────────
+
+model User {
+  id                 String     @id @default(cuid())
+  email              String     @unique
+  passwordHash       String     @map("password_hash")
+  firstName          String     @map("first_name")
+  lastName           String     @map("last_name")
+  phoneNumber        String?    @map("phone_number")
+  studentNumber      String?    @map("student_number")
+  staffNumber        String?    @map("staff_number")
+  role               UserRole   @default(STUDENT)
+  status             UserStatus @default(ACTIVE)
+  gender             String?
+  profilePicture     String?    @map("profile_picture")
+  emailVerified      Boolean    @default(false) @map("email_verified")
+  lastLoginAt        DateTime?  @map("last_login_at")
+  passwordResetToken String?    @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+  campusId           String     @map("campus_id")
+  facultyId          String?    @map("faculty_id")
+  programmeId        String?    @map("programme_id")
+  yearOfStudy        Int?       @map("year_of_study")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+
+  campus            Campus       @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  faculty           Faculty?     @relation("FacultyMember", fields: [facultyId], references: [id], onDelete: SetNull)
+  programme         Programme?   @relation(fields: [programmeId], references: [id], onDelete: SetNull)
+  deanOf            Faculty?     @relation("FacultyDean")
+  hodOf             Department?  @relation("DepartmentHOD")
+  offeredCourses    CourseOffering[] @relation("LecturerCourses")
+  classRepCourses   CourseOffering[] @relation("CourseClassRep")
+  enrolledCourses   Enrollment[]
+  classRepOf        ClassRep[]   @relation("ClassRepStudent")
+  assignedReps      ClassRep[]   @relation("ClassRepAssigner")
+  sessionsStarted   ClassSession[] @relation("SessionStarter")
+  attendanceRecords AttendanceRecord[]
+  auditLogs         AuditLog[]
+  devices           DeviceRegistration[]
+  sessions          UserSession[]
+  notifications     Notification[]
+
+  @@unique([studentNumber])
+  @@unique([staffNumber])
   @@index([email])
-  @@index([regNumber])
+  @@index([campusId])
   @@index([facultyId])
   @@index([programmeId])
   @@index([role])
+  @@index([status])
   @@map("users")
 }
 
+// ─── Enrollment & Class Rep ─────────────────────────────────────────────────
+
 model Enrollment {
-  id              String         @id @default(cuid())
-  studentId       String         @map("student_id")
-  courseOfferingId String       @map("course_offering_id")
-  enrolledAt      DateTime       @default(now()) @map("enrolled_at")
-  student         User           @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  courseOffering  CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+  id               String         @id @default(cuid())
+  studentId        String         @map("student_id")
+  courseOfferingId String         @map("course_offering_id")
+  classGroupId     String?        @map("class_group_id")
+  status           String         @default("ENROLLED")
+  enrolledAt       DateTime       @default(now()) @map("enrolled_at")
+  droppedAt        DateTime?      @map("dropped_at")
+
+  student        User           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseOffering CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+  classGroup     ClassGroup?    @relation(fields: [classGroupId], references: [id], onDelete: SetNull)
 
   @@unique([studentId, courseOfferingId])
   @@index([studentId])
   @@index([courseOfferingId])
+  @@index([classGroupId])
+  @@index([status])
   @@map("enrollments")
 }
 
@@ -223,10 +442,12 @@ model ClassRep {
   semesterId    String   @map("semester_id")
   assignedBy    String   @map("assigned_by")
   assignedAt    DateTime @default(now()) @map("assigned_at")
-  student       User     @relation("ClassRepStudent", fields: [studentId], references: [id], onDelete: Cascade)
-  programme     Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
-  semester      Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
-  assigner      User     @relation("ClassRepAssigner", fields: [assignedBy], references: [id], onDelete: Cascade)
+  isActive      Boolean  @default(true) @map("is_active")
+
+  student   User      @relation("ClassRepStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  programme Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  semester  Semester  @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  assigner  User      @relation("ClassRepAssigner", fields: [assignedBy], references: [id], onDelete: Cascade)
 
   @@unique([programmeId, yearOfStudy, semesterId])
   @@index([studentId])
@@ -234,75 +455,209 @@ model ClassRep {
   @@map("class_reps")
 }
 
+// ─── Session & Attendance Entities ───────────────────────────────────────────
+
 model ClassSession {
-  id                   String        @id @default(cuid())
-  courseOfferingId     String        @map("course_offering_id")
-  startedBy            String        @map("started_by")
-  date                 DateTime      @db.Date
-  modeOfTeaching       SessionMode   @default(physical) @map("mode_of_teaching")
-  startTime            DateTime
-  endTime              DateTime?     @map("end_time")
-  duration             Int?          // minutes
-  venue                String?
-  topic                String?
-  status               SessionStatus @default(open)
-  lecturerConfirmedAt  DateTime?     @map("lecturer_confirmed_at")
-  closedAt             DateTime?     @map("closed_at")
-  createdAt            DateTime      @default(now()) @map("created_at")
-  courseOffering       CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
-  starter              User          @relation("SessionStarter", fields: [startedBy], references: [id], onDelete: Cascade)
-  attendanceRecords    AttendanceRecord[]
+  id                  String        @id @default(cuid())
+  courseOfferingId    String        @map("course_offering_id")
+  semesterId          String?       @map("semester_id")
+  venueId             String?       @map("venue_id")
+  startedBy           String        @map("started_by")
+  date                DateTime      @db.Date
+  modeOfTeaching      SessionMode   @default(PHYSICAL) @map("mode_of_teaching")
+  startTime           DateTime
+  endTime             DateTime?     @map("end_time")
+  actualStartTime     DateTime?     @map("actual_start_time")
+  actualEndTime       DateTime?     @map("actual_end_time")
+  duration            Int?
+  topic               String?
+  materials           String?       @db.Text
+  qrSecret            String?       @map("qr_secret")
+  pinHash             String?       @map("pin_hash")
+  status              SessionStatus @default(SCHEDULED)
+  maxCheckInTime      DateTime?     @map("max_check_in_time")
+  lecturerConfirmedAt DateTime?     @map("lecturer_confirmed_at")
+  closedAt            DateTime?     @map("closed_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  courseOffering    CourseOffering     @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+  semester          Semester?          @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  venue             Venue?             @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  starter           User               @relation("SessionStarter", fields: [startedBy], references: [id], onDelete: Cascade)
+  attendanceRecords AttendanceRecord[]
 
   @@index([courseOfferingId])
+  @@index([semesterId])
+  @@index([venueId])
   @@index([date])
   @@index([status])
   @@index([startedBy])
+  @@index([courseOfferingId, date])
   @@map("class_sessions")
 }
 
 model AttendanceRecord {
-  id             String         @id @default(cuid())
-  sessionId      String         @map("session_id")
-  studentId      String         @map("student_id")
-  status         AttendanceStatus @default(present)
-  signedInAt     DateTime?      @map("signed_in_at")
-  signInMethod   SignInMethod    @default(self) @map("sign_in_method")
-  markedBy       String?        @map("marked_by")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  session        ClassSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  student        User           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id                String         @id @default(cuid())
+  sessionId         String         @map("session_id")
+  studentId         String         @map("student_id")
+  status            AttendanceStatus @default(PRESENT)
+  signedInAt        DateTime?      @map("signed_in_at")
+  signInMethod      SignInMethod    @default(SELF) @map("sign_in_method")
+  markedBy          String?        @map("marked_by")
+  deviceFingerprint String?        @map("device_fingerprint")
+  ipAddress         String?        @map("ip_address")
+  locationLat       Float?         @map("location_lat")
+  locationLng       Float?         @map("location_lng")
+  statusReason      String?        @map("status_reason")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  session  ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student  User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, studentId])
   @@index([sessionId])
   @@index([studentId])
+  @@index([studentId, createdAt])
+  @@index([sessionId, status])
   @@map("attendance_records")
 }
 
 model AttendancePolicy {
-  id            String     @id @default(cuid())
-  programmeId   String?    @map("programme_id")
-  minPercentage Decimal    @default(75) @map("min_percentage") @db.Decimal(5, 2)
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
-  programme     Programme? @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  id            String   @id @default(cuid())
+  programmeId   String?  @map("programme_id")
+  minPercentage Decimal  @default(75) @map("min_percentage") @db.Decimal(5, 2)
+  lateThreshold Int      @default(15) @map("late_threshold")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  programme Programme? @relation(fields: [programmeId], references: [id], onDelete: Cascade)
 
   @@unique([programmeId])
   @@map("attendance_policies")
 }
 
+// ─── Timetable Entity ────────────────────────────────────────────────────────
+
+model Timetable {
+  id               String   @id @default(cuid())
+  courseOfferingId String   @map("course_offering_id")
+  venueId          String   @map("venue_id")
+  dayOfWeek        Int      @map("day_of_week")
+  startTime        DateTime
+  endTime          DateTime
+  weekPattern      String?  @default("WEEKLY") @map("week_pattern")
+  startDate        DateTime @map("start_date")
+  endDate          DateTime @map("end_date")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  courseOffering CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+  venue          Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@unique([venueId, dayOfWeek, startTime])
+  @@index([courseOfferingId])
+  @@index([venueId])
+  @@index([dayOfWeek])
+  @@map("timetables")
+}
+
+// ─── Device & Session Entities ───────────────────────────────────────────────
+
+model DeviceRegistration {
+  id                String         @id @default(cuid())
+  userId            String         @map("user_id")
+  deviceFingerprint String         @map("device_fingerprint")
+  deviceName        String?        @map("device_name")
+  platform          DevicePlatform
+  pushToken         String?        @map("push_token")
+  isActive          Boolean        @default(true) @map("is_active")
+  registeredAt      DateTime       @default(now()) @map("registered_at")
+  lastUsedAt        DateTime?      @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceFingerprint])
+  @@index([userId])
+  @@index([deviceFingerprint])
+  @@map("device_registrations")
+}
+
+model UserSession {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  token        String    @unique
+  refreshToken String?   @unique @map("refresh_token")
+  ipAddress    String?   @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  deviceInfo   String?   @map("device_info")
+  expiresAt    DateTime  @map("expires_at")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+// ─── Notification Entity ─────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  title     String
+  message   String           @db.Text
+  type      NotificationType @default(GENERAL)
+  isRead    Boolean          @default(false) @map("is_read")
+  metadata  Json?
+  createdAt DateTime         @default(now()) @map("created_at")
+  readAt    DateTime?        @map("read_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ─── Audit Entity ────────────────────────────────────────────────────────────
+
 model AuditLog {
-  id         String   @id @default(cuid())
-  actorId    String   @map("actor_id")
-  action     String
-  targetTable String  @map("target_table")
-  targetId   String   @map("target_id")
-  beforeJson Json?    @map("before_json")
-  afterJson  Json?    @map("after_json")
-  createdAt  DateTime @default(now()) @map("created_at")
-  actor      User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  id         String      @id @default(cuid())
+  actorId    String      @map("actor_id")
+  action     AuditAction
+  entityType String      @map("entity_type")
+  entityId   String      @map("entity_id")
+  beforeJson Json?       @map("before_json")
+  afterJson  Json?       @map("after_json")
+  ipAddress  String?     @map("ip_address")
+  userAgent  String?     @map("user_agent")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
 
   @@index([actorId])
-  @@index([targetTable, targetId])
+  @@index([entityType, entityId])
+  @@index([action])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ─── System Settings ─────────────────────────────────────────────────────────
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
 }

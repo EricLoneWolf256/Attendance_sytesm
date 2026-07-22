@@ -1,181 +1,179 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PageLoader } from "@/components/PageLoader";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { useAuth } from "./contexts/AuthContext";
-import { AdminLayout } from "./components/admin/AdminLayout";
-import { LoginPage } from "./pages/LoginPage";
-import { RegisterPage } from "./pages/RegisterPage";
-import { DashboardPage } from "./pages/admin/DashboardPage";
-import { CampusesPage } from "./pages/admin/CampusesPage";
-import { FacultiesPage } from "./pages/admin/FacultiesPage";
-import { DepartmentsPage } from "./pages/admin/DepartmentsPage";
-import { ProgrammesPage } from "./pages/admin/ProgrammesPage";
-import { CoursesPage } from "./pages/admin/CoursesPage";
-import { CourseOfferingsPage } from "./pages/admin/CourseOfferingsPage";
-import { UsersPage } from "./pages/admin/UsersPage";
-import { ClassRepsPage } from "./pages/admin/ClassRepsPage";
-import { EnrollmentsPage } from "./pages/admin/EnrollmentsPage";
-import { AcademicPage } from "./pages/admin/AcademicPage";
-import { ReportsPage } from "./pages/admin/ReportsPage";
-import { ImportPage } from "./pages/admin/ImportPage";
-import { AuditLogPage } from "./pages/admin/AuditLogPage";
-import { PolicyPage } from "./pages/admin/PolicyPage";
-import { ProfilePage } from "./pages/student/ProfilePage";
-import { EnrollPage } from "./pages/student/EnrollPage";
-import { DashboardPage as StudentDashboard } from "./pages/student/DashboardPage";
-import { MyAttendancePage } from "./pages/student/MyAttendancePage";
-import { CheckInPage } from "./pages/student/CheckInPage";
-import { SessionListPage } from "./pages/classrep/SessionListPage";
-import { SessionDetailPage } from "./pages/classrep/SessionDetailPage";
-import { DashboardPage as LecturerDashboard } from "./pages/lecturer/DashboardPage";
-import { LecturerSessionsPage } from "./pages/lecturer/LecturerSessionsPage";
-import { LecturerSessionDetailPage } from "./pages/lecturer/LecturerSessionDetailPage";
+import { AppLayout } from "./components/layout/AppLayout";
+import { ROUTES } from "@/lib/routes";
 
-const ADMIN_ROLES = ["ADMIN", "SUPER_ADMIN"];
+const LoginPage = lazy(() =>
+  import("./pages/LoginPage").then((m) => ({ default: m.LoginPage }))
+);
+
+// Student pages
+const StudentDashboard = lazy(() =>
+  import("./pages/student/Dashboard").then((m) => ({ default: m.StudentDashboard }))
+);
+const StudentCheckIn = lazy(() =>
+  import("./pages/student/CheckIn").then((m) => ({ default: m.StudentCheckIn }))
+);
+const StudentHistory = lazy(() =>
+  import("./pages/student/History").then((m) => ({ default: m.StudentHistory }))
+);
+
+// ClassRep pages
+const ClassRepDashboard = lazy(() =>
+  import("./pages/classrep/Dashboard").then((m) => ({ default: m.Dashboard }))
+);
+const ClassRepSessions = lazy(() =>
+  import("./pages/classrep/Sessions").then((m) => ({ default: m.Sessions }))
+);
+const ClassRepSessionDetail = lazy(() =>
+  import("./pages/classrep/SessionDetail").then((m) => ({ default: m.SessionDetail }))
+);
+
+// Lecturer pages
+const LecturerDashboard = lazy(() =>
+  import("./pages/lecturer/Dashboard").then((m) => ({ default: m.Dashboard }))
+);
+const LecturerSessions = lazy(() =>
+  import("./pages/lecturer/Sessions").then((m) => ({ default: m.Sessions }))
+);
+const LecturerSessionDetail = lazy(() =>
+  import("./pages/lecturer/SessionDetail").then((m) => ({ default: m.SessionDetail }))
+);
+
+// Faculty Admin pages
+const FacultyDashboard = lazy(() =>
+  import("./pages/faculty-admin/Dashboard").then((m) => ({ default: m.FacultyDashboard }))
+);
+const FacultyReports = lazy(() =>
+  import("./pages/faculty-admin/Reports").then((m) => ({ default: m.FacultyReports }))
+);
+
+// Super Admin pages
+const SuperAdminDashboard = lazy(() =>
+  import("./pages/super-admin/Dashboard").then((m) => ({ default: m.SuperAdminDashboard }))
+);
+const UserManagement = lazy(() =>
+  import("./pages/super-admin/Users").then((m) => ({ default: m.UserManagement }))
+);
+const FacultyManagement = lazy(() =>
+  import("./pages/super-admin/Faculties").then((m) => ({ default: m.FacultyManagement }))
+);
+const CourseManagement = lazy(() =>
+  import("./pages/super-admin/Courses").then((m) => ({ default: m.CourseManagement }))
+);
+const SystemSettings = lazy(() =>
+  import("./pages/super-admin/Settings").then((m) => ({ default: m.SystemSettings }))
+);
+
+const NotFoundPage = lazy(() =>
+  import("./pages/NotFoundPage").then((m) => ({ default: m.NotFoundPage }))
+);
 
 function RoleRedirect() {
-  const { user } = useAuth();
-  if (user?.role === "LECTURER") return <Navigate to="/lecturer" replace />;
-  if (user?.role === "STUDENT") return <Navigate to="/student/dashboard" replace />;
-  return <Navigate to="/admin" replace />;
+  return <Navigate to={ROUTES.login} replace />;
 }
 
 function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
 
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute allowedRoles={ADMIN_ROLES}>
-            <AdminLayout />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<DashboardPage />} />
-        <Route
-          path="campuses"
-          element={
-            <ProtectedRoute allowedRoles={["SUPER_ADMIN"]}>
-              <CampusesPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="faculties"
-          element={
-            <ProtectedRoute allowedRoles={["SUPER_ADMIN"]}>
-              <FacultiesPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="departments" element={<DepartmentsPage />} />
-        <Route path="programmes" element={<ProgrammesPage />} />
-        <Route path="courses" element={<CoursesPage />} />
-        <Route path="course-offerings" element={<CourseOfferingsPage />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="class-reps" element={<ClassRepsPage />} />
-        <Route path="enrollments" element={<EnrollmentsPage />} />
-        <Route path="academic" element={<AcademicPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="import" element={<ImportPage />} />
-        <Route path="audit" element={<AuditLogPage />} />
-        <Route path="policies" element={<PolicyPage />} />
-      </Route>
+          {/* Student routes */}
+          <Route
+            path="/student"
+            element={
+              <ErrorBoundary>
+                <ProtectedRoute allowedRoles={["STUDENT"]}>
+                  <AppLayout />
+                </ProtectedRoute>
+              </ErrorBoundary>
+            }
+          >
+            <Route index element={<Navigate to={ROUTES.student.dashboard} replace />} />
+            <Route path="dashboard" element={<StudentDashboard />} />
+            <Route path="checkin" element={<StudentCheckIn />} />
+            <Route path="history" element={<StudentHistory />} />
+          </Route>
 
-      <Route
-        path="/student/profile"
-        element={
-          <ProtectedRoute allowedRoles={["STUDENT"]}>
-            <ProfilePage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/student/enroll"
-        element={
-          <ProtectedRoute allowedRoles={["STUDENT"]}>
-            <EnrollPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/student/dashboard"
-        element={
-          <ProtectedRoute allowedRoles={["STUDENT"]}>
-            <StudentDashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/student/attendance"
-        element={
-          <ProtectedRoute allowedRoles={["STUDENT"]}>
-            <MyAttendancePage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/student/checkin"
-        element={
-          <ProtectedRoute allowedRoles={["STUDENT"]}>
-            <CheckInPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/classrep/sessions"
-        element={
-          <ProtectedRoute allowedRoles={["STUDENT"]}>
-            <SessionListPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/classrep/sessions/:id"
-        element={
-          <ProtectedRoute allowedRoles={["STUDENT"]}>
-            <SessionDetailPage />
-          </ProtectedRoute>
-        }
-      />
+          {/* ClassRep routes (uses STUDENT role) */}
+          <Route
+            path="/classrep"
+            element={
+              <ErrorBoundary>
+                <ProtectedRoute allowedRoles={["STUDENT"]}>
+                  <AppLayout />
+                </ProtectedRoute>
+              </ErrorBoundary>
+            }
+          >
+            <Route index element={<Navigate to={ROUTES.classrep.dashboard} replace />} />
+            <Route path="dashboard" element={<ClassRepDashboard />} />
+            <Route path="sessions" element={<ClassRepSessions />} />
+            <Route path="sessions/:id" element={<ClassRepSessionDetail />} />
+          </Route>
 
-      <Route
-        path="/lecturer"
-        element={
-          <ProtectedRoute allowedRoles={["LECTURER"]}>
-            <LecturerDashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/lecturer/sessions"
-        element={
-          <ProtectedRoute allowedRoles={["LECTURER"]}>
-            <LecturerSessionsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/lecturer/sessions/:id"
-        element={
-          <ProtectedRoute allowedRoles={["LECTURER"]}>
-            <LecturerSessionDetailPage />
-          </ProtectedRoute>
-        }
-      />
+          {/* Lecturer routes */}
+          <Route
+            path="/lecturer"
+            element={
+              <ErrorBoundary>
+                <ProtectedRoute allowedRoles={["LECTURER"]}>
+                  <AppLayout />
+                </ProtectedRoute>
+              </ErrorBoundary>
+            }
+          >
+            <Route index element={<Navigate to={ROUTES.lecturer.dashboard} replace />} />
+            <Route path="dashboard" element={<LecturerDashboard />} />
+            <Route path="sessions" element={<LecturerSessions />} />
+            <Route path="sessions/:id" element={<LecturerSessionDetail />} />
+          </Route>
 
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <RoleRedirect />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+          {/* Faculty Admin routes */}
+          <Route
+            path="/faculty-admin"
+            element={
+              <ErrorBoundary>
+                <ProtectedRoute allowedRoles={["ADMIN"]}>
+                  <AppLayout />
+                </ProtectedRoute>
+              </ErrorBoundary>
+            }
+          >
+            <Route index element={<Navigate to={ROUTES.facultyAdmin.dashboard} replace />} />
+            <Route path="dashboard" element={<FacultyDashboard />} />
+            <Route path="reports" element={<FacultyReports />} />
+          </Route>
+
+          {/* Super Admin routes */}
+          <Route
+            path="/admin"
+            element={
+              <ErrorBoundary>
+                <ProtectedRoute allowedRoles={["SUPER_ADMIN"]}>
+                  <AppLayout />
+                </ProtectedRoute>
+              </ErrorBoundary>
+            }
+          >
+            <Route index element={<Navigate to={ROUTES.superAdmin.dashboard} replace />} />
+            <Route path="dashboard" element={<SuperAdminDashboard />} />
+            <Route path="users" element={<UserManagement />} />
+            <Route path="faculties" element={<FacultyManagement />} />
+            <Route path="courses" element={<CourseManagement />} />
+            <Route path="settings" element={<SystemSettings />} />
+          </Route>
+
+          <Route path="/" element={<RoleRedirect />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
